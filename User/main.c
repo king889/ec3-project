@@ -67,33 +67,33 @@ void LineFollowControl(uint8_t mask)
             break;
             
         case 0x01:  // 最右边没线 - 轻微左转
-            Motor1_PID.Target = base_speed - 20;
-            Motor2_PID.Target = base_speed + 20;
+            Motor1_PID.Target = 50;
+            Motor2_PID.Target = -50;
             break;
             
         case 0x03:  // 右边两边没线 - 中等左转
-            Motor1_PID.Target = base_speed - 30;
-            Motor2_PID.Target = base_speed + 30;
+            Motor1_PID.Target = 80;
+            Motor2_PID.Target = -80;
             break;
             
         case 0x07:  // 右边三边没线 - 较大左转
-            Motor1_PID.Target = base_speed - 40;
-            Motor2_PID.Target = base_speed + 40;
+            Motor1_PID.Target = 100;
+            Motor2_PID.Target = -100;
             break;
             
         case 0x10:  // 最左边没线 - 轻微右转
-            Motor1_PID.Target = base_speed + 20;
-            Motor2_PID.Target = base_speed - 20;
+            Motor1_PID.Target = -50;
+            Motor2_PID.Target = 50;
             break;
             
         case 0x18:  // 左边两边没线 - 中等右转
-            Motor1_PID.Target = base_speed + 30;
-            Motor2_PID.Target = base_speed - 30;
+            Motor1_PID.Target = -80;
+            Motor2_PID.Target = 80;
             break;
             
         case 0x1C:  // 左边三边没线 - 较大右转
-            Motor1_PID.Target = base_speed + 40;
-            Motor2_PID.Target = base_speed - 40;
+            Motor1_PID.Target = 100;
+            Motor2_PID.Target = -100;
             break;
             
         case 0x02:  // 中间偏右 - 小右转
