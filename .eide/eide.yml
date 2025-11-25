@@ -70,6 +70,8 @@ virtualFolder:
       files:
         - path: System/Delay.c
         - path: System/Delay.h
+        - path: System/Timer.c
+        - path: System/Timer.h
       folders: []
     - name: Hardware
       files:
@@ -89,6 +91,8 @@ virtualFolder:
         - path: Hardware/PWM.h
         - path: Hardware/Serial.c
         - path: Hardware/Serial.h
+        - path: Hardware/line.c
+        - path: Hardware/line.h
       folders: []
     - name: User
       files:
@@ -96,6 +100,8 @@ virtualFolder:
         - path: User/stm32f10x_conf.h
         - path: User/stm32f10x_it.c
         - path: User/stm32f10x_it.h
+        - path: User/PID.c
+        - path: User/PID.h
       folders: []
 dependenceList: []
 outDir: build
