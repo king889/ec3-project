@@ -30,3 +30,12 @@
 .\objects\main.o: .\Library\misc.h
 .\objects\main.o: .\System\Delay.h
 .\objects\main.o: .\Hardware\OLED.h
+.\objects\main.o: .\Hardware\OLED_Data.h
+.\objects\main.o: .\Hardware\line.h
+.\objects\main.o: .\Hardware\motor.h
+.\objects\main.o: .\Hardware\PWM.h
+.\objects\main.o: .\System\Timer.h
+.\objects\main.o: .\Hardware\Encoder.h
+.\objects\main.o: User\PID.h
+.\objects\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+.\objects\main.o: .\Hardware\Serial.h

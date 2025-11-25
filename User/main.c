@@ -15,14 +15,20 @@
 int16_t Speed1, Speed2;
 int32_t Location1, Location2;
 
+// 速度调整相关变量
+uint32_t SpeedAdjustTimer = 0;  // 速度调整计时器
+uint8_t SpeedIndex = 0;         // 当前速度索引
+const float SpeedTargets[] = {20.0f, 40.0f, 60.0f, 80.0f, 100.0f, 80.0f, 60.0f, 40.0f}; // 速度目标数组
+const uint8_t SpeedCount = sizeof(SpeedTargets) / sizeof(SpeedTargets[0]); // 速度目标数量
+
 // 电机1 速度环PID参数
 PID_t Motor1_PID = {
-    .Target = 100,
+    .Target = 30,
     .Actual = 0,
     .Out = 0,
-    .Kp = 0.3,
-    .Ki = 0.005, 
-    .Kd = 0.5,
+    .Kp = 1,
+    .Ki = 0.1, 
+    .Kd = 0.2,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -33,12 +39,12 @@ PID_t Motor1_PID = {
 
 // 电机2 速度环PID参数
 PID_t Motor2_PID = {
-    .Target = 100,
+    .Target = 30,
     .Actual = 0,
     .Out = 0,
-    .Kp = 0.3,
-    .Ki = 0.005, 
-    .Kd = 0.5,
+    .Kp = 1,
+    .Ki = 0.1, 
+    .Kd = 0.2,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -62,9 +68,10 @@ int main(void)
 	Delay_ms(100);
 	Serial_Printf("USART Test: PB10/PB11 OK!\r\n");
 
-	/* 显示标题 */
+	/* 显示标题和初始目标速度 */
 	OLED_Clear();
-	OLED_ShowString(0, 0, "Speed Control", OLED_8X16);
+	OLED_ShowString(0, 0, "Target:", OLED_8X16);
+	OLED_ShowNum(64, 0, (int32_t)Motor1_PID.Target, 3, OLED_8X16);
 	OLED_Update();
 
 	char s[6];
@@ -72,6 +79,25 @@ int main(void)
 
 	while (1)	
 	{
+		/* 速度调整逻辑 - 每5秒调整一次 */
+		SpeedAdjustTimer += 100;  // 每次循环增加100ms
+		if (SpeedAdjustTimer >= 5000)  // 5秒
+		{
+			SpeedAdjustTimer = 0;
+			
+			// 更新速度目标
+			Motor1_PID.Target = SpeedTargets[SpeedIndex];
+			Motor2_PID.Target = SpeedTargets[SpeedIndex];
+			
+			// 更新索引，循环使用
+			SpeedIndex = (SpeedIndex + 1) % SpeedCount;
+			
+			// 在OLED上显示新的目标速度
+			OLED_ClearArea(0, 0, 128, 16);
+			OLED_ShowString(0, 0, "Target:", OLED_8X16);
+			OLED_ShowNum(64, 0, (int32_t)Motor1_PID.Target, 3, OLED_8X16);
+		}
+
 		/* 读取 PA8..PA12 的掩码并显示 */
 		mask = Read_A8_A12_mask();
 		Read_A8_A12_str(s);
@@ -94,7 +120,7 @@ int main(void)
 		OLED_Update();
 		
 		// 通过串口发送速度数据（添加起始标记便于识别）
-		Serial_Printf("S1:%d S2:%d M:0x%02X Bits:%s\r\n", Speed1, Speed2, mask, s);
+		Serial_Printf("%d,%d,%.0f\r\n", Speed1, Speed2, Motor1_PID.Target);
 		
 		Delay_ms(100);
 	}
