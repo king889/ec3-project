@@ -13,22 +13,21 @@
 
 // 全局变量
 int16_t Speed1, Speed2;
-int32_t Location1, Location2;
 
 // 速度调整相关变量
-uint32_t SpeedAdjustTimer = 0;  // 速度调整计时器
-uint8_t SpeedIndex = 0;         // 当前速度索引
-const float SpeedTargets[] = {20.0f, 40.0f, 60.0f, 80.0f, 100.0f, 80.0f, 60.0f, 40.0f}; // 速度目标数组
-const uint8_t SpeedCount = sizeof(SpeedTargets) / sizeof(SpeedTargets[0]); // 速度目标数量
+// uint32_t SpeedAdjustTimer = 0;  // 速度调整计时器
+// uint8_t SpeedIndex = 0;         // 当前速度索引
+// const float SpeedTargets[] = {20.0f, 40.0f, 60.0f, 80.0f, 100.0f, 80.0f, 60.0f, 40.0f}; // 速度目标数组
+// const uint8_t SpeedCount = sizeof(SpeedTargets) / sizeof(SpeedTargets[0]); // 速度目标数量
 
-// 电机1 速度环PID参数
+// 电机1 左手边的电机
 PID_t Motor1_PID = {
-    .Target = 30,
+    .Target = 0,
     .Actual = 0,
     .Out = 0,
-    .Kp = 1,
-    .Ki = 0.1, 
-    .Kd = 0.2,
+    .Kp = 0.35,
+    .Ki = 0.02, 
+    .Kd = 0.4,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -37,14 +36,14 @@ PID_t Motor1_PID = {
     .OutMin = -130
 };
 
-// 电机2 速度环PID参数
+// 电机2 右手边的电机
 PID_t Motor2_PID = {
     .Target = 30,
     .Actual = 0,
     .Out = 0,
-    .Kp = 1,
-    .Ki = 0.1, 
-    .Kd = 0.2,
+    .Kp = 0.35,
+    .Ki = 0.02, 
+    .Kd = 0.4,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -52,6 +51,60 @@ PID_t Motor2_PID = {
     .DeadZone = 0,
     .OutMin = -130
 };
+
+void LineFollowControl(uint8_t mask)
+{
+    // 基础速度
+    float base_speed = 40.0f;
+    
+    // 根据掩码判断转向
+    switch(mask)
+    {
+        case 0x00:  // 全黑 - 直行
+        case 0x1F:  // 全白 - 直行
+            Motor1_PID.Target = base_speed;
+            Motor2_PID.Target = base_speed;
+            break;
+            
+        case 0x01:  // 最右边没线 - 轻微左转
+            Motor1_PID.Target = base_speed - 20;
+            Motor2_PID.Target = base_speed + 20;
+            break;
+            
+        case 0x03:  // 右边两边没线 - 中等左转
+            Motor1_PID.Target = base_speed - 30;
+            Motor2_PID.Target = base_speed + 30;
+            break;
+            
+        case 0x07:  // 右边三边没线 - 较大左转
+            Motor1_PID.Target = base_speed - 40;
+            Motor2_PID.Target = base_speed + 40;
+            break;
+            
+        case 0x10:  // 最左边没线 - 轻微右转
+            Motor1_PID.Target = base_speed + 20;
+            Motor2_PID.Target = base_speed - 20;
+            break;
+            
+        case 0x18:  // 左边两边没线 - 中等右转
+            Motor1_PID.Target = base_speed + 30;
+            Motor2_PID.Target = base_speed - 30;
+            break;
+            
+        case 0x1C:  // 左边三边没线 - 较大右转
+            Motor1_PID.Target = base_speed + 40;
+            Motor2_PID.Target = base_speed - 40;
+            break;
+            
+        case 0x02:  // 中间偏右 - 小右转
+        case 0x04:  // 中间 - 直行
+        case 0x08:  // 中间偏左 - 小左转
+        default:    // 其他情况 - 直行
+            Motor1_PID.Target = base_speed;
+            Motor2_PID.Target = base_speed;
+            break;
+    }
+}
 
 int main(void)
 {
@@ -64,11 +117,7 @@ int main(void)
 	Timer_Init();
 	Serial_Init();
 	
-	/* 发送测试消息 */
-	Delay_ms(100);
-	Serial_Printf("USART Test: PB10/PB11 OK!\r\n");
 
-	/* 显示标题和初始目标速度 */
 	OLED_Clear();
 	OLED_ShowString(0, 0, "Target:", OLED_8X16);
 	OLED_ShowNum(64, 0, (int32_t)Motor1_PID.Target, 3, OLED_8X16);
@@ -79,30 +128,16 @@ int main(void)
 
 	while (1)	
 	{
-		/* 速度调整逻辑 - 每5秒调整一次 */
-		SpeedAdjustTimer += 100;  // 每次循环增加100ms
-		if (SpeedAdjustTimer >= 5000)  // 5秒
-		{
-			SpeedAdjustTimer = 0;
-			
-			// 更新速度目标
-			Motor1_PID.Target = SpeedTargets[SpeedIndex];
-			Motor2_PID.Target = SpeedTargets[SpeedIndex];
-			
-			// 更新索引，循环使用
-			SpeedIndex = (SpeedIndex + 1) % SpeedCount;
-			
-			// 在OLED上显示新的目标速度
-			OLED_ClearArea(0, 0, 128, 16);
-			OLED_ShowString(0, 0, "Target:", OLED_8X16);
-			OLED_ShowNum(64, 0, (int32_t)Motor1_PID.Target, 3, OLED_8X16);
-		}
+
 
 		/* 读取 PA8..PA12 的掩码并显示 */
 		mask = Read_A8_A12_mask();
 		Read_A8_A12_str(s);
 
-		/* 清除显示区域并写入最新状态 */
+		// 根据掩码控制转向
+		LineFollowControl(mask);
+
+		
 		OLED_ClearArea(0, 18, 128, 46);
 		OLED_ShowString(0, 18, "Bits:", OLED_6X8);
 		OLED_ShowString(36, 18, s, OLED_6X8);
@@ -122,7 +157,7 @@ int main(void)
 		// 通过串口发送速度数据（添加起始标记便于识别）
 		Serial_Printf("%d,%d,%.0f\r\n", Speed1, Speed2, Motor1_PID.Target);
 		
-		Delay_ms(100);
+
 	}
 }
 
@@ -141,13 +176,11 @@ void TIM1_UP_IRQHandler(void)
 			// 读取编码器速度
 			Speed1 = Encoder_Get1();
 			Speed2 = Encoder_Get2();
-			Location1 += Speed1;
-			Location2 += Speed2;
 			
 			// 电机1 PID控制
-			Motor1_PID.Actual = Speed1;
+			Motor1_PID.Actual = -Speed1;
 			PID_Update(&Motor1_PID);
-			Motor_SetPWM1((int8_t)Motor1_PID.Out);
+			Motor_SetPWM1(-(int8_t)Motor1_PID.Out);
 			
 			// 电机2 PID控制
 			Motor2_PID.Actual = Speed2;
@@ -159,3 +192,7 @@ void TIM1_UP_IRQHandler(void)
 	}
 }
 
+// 根据掩码控制转向的函数
+// mask: 5位掩码，bit4(PA8)=最左边, bit0(PA12)=最右边
+// 1=没有线(白), 0=有线(黑)
+// 控制PID速度环的目标值
