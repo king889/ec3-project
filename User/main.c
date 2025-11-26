@@ -17,6 +17,28 @@ int16_t Speed1, Speed2;
 // 巡线传感器变量 (1=黑线, 0=白线)
 uint8_t X1, X2, X3, X4, X5;  // X1最右边, X5最左边
 
+// 巡线位置环PID控制变量
+int8_t g_cLineState = 0;        // 当前线位置状态 (-5到+5)
+int8_t g_cLastLineState = 0;    // 上次状态
+float g_fLinePID_Out = 0.0f;    // 位置PID输出
+const float BASE_SPEED = 60.0f; // 基础速度 (提高速度)
+
+// 位置环PID结构 - 用于循迹位置控制
+PID_t Line_PID = {
+    .Target = 0,      // 目标位置为0(中间)
+    .Actual = 0,
+    .Out = 0,
+    .Kp = 26.0f,      // 比例系数 (增大以提高响应速度)
+    .Ki = 0.0f,       // 积分系数
+    .Kd = 3.0f,       // 微分系数 (增大以减少震荡)
+    .Error0 = 0,
+    .Error1 = 0,
+    .Error2 = 0,
+    .OutMax = 140,     // 输出限幅 (增大转向幅度)
+    .DeadZone = 0,
+    .OutMin = -140
+};
+
 // 速度调整相关变量
 // uint32_t SpeedAdjustTimer = 0;  // 速度调整计时器
 // uint8_t SpeedIndex = 0;         // 当前速度索引
@@ -28,9 +50,9 @@ PID_t Motor1_PID = {
     .Target = 0,
     .Actual = 0,
     .Out = 0,
-    .Kp = 0.5,
+    .Kp = 1,
     .Ki = 0.02, 
-    .Kd = 0.3,
+    .Kd = 0.2,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -44,9 +66,9 @@ PID_t Motor2_PID = {
     .Target = 30,
     .Actual = 0,
     .Out = 0,
-    .Kp = 0.5,
+    .Kp = 1,
     .Ki = 0.02, 
-    .Kd = 0.3,
+    .Kd = 0.2,
     .Error0 = 0,
     .Error1 = 0,
     .Error2 = 0,
@@ -75,29 +97,87 @@ void Set_Car_Speed(int16_t left_speed, int16_t right_speed)
     Motor2_PID.Target = (float)right_speed;
 }
 
-// 巡线任务
+// 巡线任务 - 使用状态值+位置PID控制
 void Trace_task(void) 
 {
+    float left_speed, right_speed;
+    
     Read_Sensors();
     
-    if(X1==0 && X3==0) {
-        Set_Car_Speed(30, 30);    // 直行
+    // 根据传感器状态映射到位置状态值
+    // X1(最右)=正值偏右, X5(最左)=负值偏左
+    // 状态值: 正=偏右需左转, 负=偏左需右转
+    
+    // 正常直行 - 只有中间传感器检测到线
+    if(X1==0 && X2==0 && X3==1 && X4==0 && X5==0) {
+        g_cLineState = 0;  // 正中
     }
-    else if(X1==1 && X3==0) {
-        Set_Car_Speed(80, -70);       // 左转 (左轮停，右轮转)
+    // 轻微偏右
+    else if(X1==0 && X2==1 && X3==0 && X4==0 && X5==0) {
+        g_cLineState = 1;  // 偏右一点
     }
-    else if(X1==0 && X3==1) {
-        Set_Car_Speed(-70, 80);       // 右转 (左轮转，右轮停)
+    else if(X1==0 && X2==1 && X3==1 && X4==0 && X5==0) {
+        g_cLineState = 2;  // 偏右较多
     }
-    else if(X2==0 && X1==1 && X3==1 && X4==1) {
-        Set_Car_Speed(120, -90);       // 急左转
+    // 严重偏右
+    else if(X1==1 && X2==0 && X3==0 && X4==0 && X5==0) {
+        g_cLineState = 3;  // 偏右很多
     }
-    else if(X2==1 && X1==1 && X3==1 && X4==0) {
-        Set_Car_Speed(-90, 120);       // 急右转
+    else if(X1==1 && X2==1 && X3==0 && X4==0 && X5==0) {
+        g_cLineState = 4;  // 极度偏右
+    }
+    else if(X1==1 && X2==1 && X3==1 && X4==0 && X5==0) {
+        g_cLineState = 5;  // 最右
+    }
+    // 轻微偏左
+    else if(X1==0 && X2==0 && X3==0 && X4==1 && X5==0) {
+        g_cLineState = -1; // 偏左一点
+    }
+    else if(X1==0 && X2==0 && X3==1 && X4==1 && X5==0) {
+        g_cLineState = -2; // 偏左较多
+    }
+    // 严重偏左
+    else if(X1==0 && X2==0 && X3==0 && X4==0 && X5==1) {
+        g_cLineState = -3; // 偏左很多
+    }
+    else if(X1==0 && X2==0 && X3==0 && X4==1 && X5==1) {
+        g_cLineState = -4; // 极度偏左
+    }
+    else if(X1==0 && X2==0 && X3==1 && X4==1 && X5==1) {
+        g_cLineState = -5; // 最左
+    }
+    // 特殊情况
+    else if(X1==0 && X2==0 && X3==0 && X4==0 && X5==0) {
+        g_cLineState = g_cLastLineState; // 丢失线，保持上次状态
+    }
+    else if(X1==1 && X2==1 && X3==1 && X4==1 && X5==1) {
+        g_cLineState = 0; // 全黑线(路口)，直行
     }
     else {
-        Set_Car_Speed(30, 30);    // 默认直行
+        g_cLineState = g_cLastLineState; // 其他情况保持上次状态
     }
+    
+    // 使用位置PID计算输出
+    Line_PID.Actual = (float)g_cLineState;
+    PID_Update(&Line_PID);
+    g_fLinePID_Out = Line_PID.Out;
+    
+    // 计算左右轮速度 = 基础速度 ± PID输出
+    // 正偏差(偏右)需要左转：左轮减速，右轮加速
+    left_speed = BASE_SPEED - g_fLinePID_Out;
+    right_speed = BASE_SPEED + g_fLinePID_Out;
+    
+    // 速度限幅
+    if(left_speed > 100.0f) left_speed = 100.0f;
+    if(left_speed < -100.0f) left_speed = -100.0f;
+    if(right_speed > 100.0f) right_speed = 100.0f;
+    if(right_speed < -100.0f) right_speed = -100.0f;
+    
+    // 设置目标速度
+    Set_Car_Speed((int16_t)left_speed, (int16_t)right_speed);
+    
+    // 保存当前状态
+    g_cLastLineState = g_cLineState;
 }
 // {
 //     if(X2==1 && X1 == 1 && X4 ==1 && X5==1 )
@@ -243,21 +323,27 @@ int main(void)
 		OLED_ShowNum(72, 26, X3, 1, OLED_6X8);
 		OLED_ShowNum(84, 26, X4, 1, OLED_6X8);
 		OLED_ShowNum(96, 26, X5, 1, OLED_6X8);
-		OLED_ShowString(0, 34, "Mask:", OLED_6X8);
-		OLED_ShowBinNum(36, 34, mask, 5, OLED_6X8);
-		OLED_ShowString(80, 34, "Val:", OLED_6X8);
-		OLED_ShowNum(104, 34, mask, 3, OLED_6X8);
+		OLED_ShowString(0, 34, "St:", OLED_6X8);
+		OLED_ShowSignedNum(18, 34, g_cLineState, 2, OLED_6X8);
+		OLED_ShowString(42, 34, "PID:", OLED_6X8);
+		OLED_ShowSignedNum(66, 34, (int16_t)g_fLinePID_Out, 3, OLED_6X8);
+		OLED_ShowString(96, 34, "M:", OLED_6X8);
+		OLED_ShowNum(108, 34, mask, 2, OLED_6X8);
 		
-		// 显示速度信息
-		OLED_ShowString(0, 40, "S1:", OLED_6X8);
-		OLED_ShowSignedNum(18, 40, Speed1, 4, OLED_6X8);
-		OLED_ShowString(60, 40, "S2:", OLED_6X8);
-		OLED_ShowSignedNum(78, 40, Speed2, 4, OLED_6X8);
+		// 显示速度信息(实际+目标)
+		OLED_ShowString(0, 40, "A:", OLED_6X8);
+		OLED_ShowSignedNum(12, 40, Speed1, 3, OLED_6X8);
+		OLED_ShowSignedNum(36, 40, Speed2, 3, OLED_6X8);
+		OLED_ShowString(60, 40, "T:", OLED_6X8);
+		OLED_ShowSignedNum(72, 40, (int16_t)Motor1_PID.Target, 3, OLED_6X8);
+		OLED_ShowSignedNum(96, 40, (int16_t)Motor2_PID.Target, 3, OLED_6X8);
 
 		OLED_Update();
 		
 		// 通过串口发送传感器数据
-		Serial_Printf("X:%d%d%d%d%d M:%d\r\n", X5, X4, X3, X2, X1, mask);
+		Serial_Printf("X:%d%d%d%d%d St:%d PID:%.1f L:%d R:%d\r\n", 
+		              X5, X4, X3, X2, X1, g_cLineState, g_fLinePID_Out,
+		              (int16_t)Motor1_PID.Target, (int16_t)Motor2_PID.Target);
 		
 
 	}
